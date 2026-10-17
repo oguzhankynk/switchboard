@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calisma Dashboard</title>
+<link rel="stylesheet" href="/static/vendor/xterm/xterm.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Calisma Dashboard</h1>
+  </header>
+
+  <main>
+    <section id="general-terminal-section">
+      <h2>Agent terminals <span class="scope">(general: all projects)</span></h2>
+      <div class="agent-cmd-box">
+        <label for="agent-cmd-input">Command for new terminals</label>
+        <input id="agent-cmd-input" type="text" placeholder="claude">
+        <button id="agent-cmd-save" class="small-btn">Save</button>
+      </div>
+      <div class="pane-toolbar">
+        <button id="general-new-agent-btn" class="small-btn">+ Agent</button>
+        <button id="general-new-shell-btn" class="small-btn">+ Linux shell</button>
+      </div>
+      <div id="general-terminal-panes" class="terminal-panes"></div>
+    </section>
+
+    <section id="projects-section">
+      <h2>Projects</h2>
+      <div class="add-project-box">
+        <input id="add-path-input" type="text" placeholder="/home/user/Calisma/projects/my-repo">
+        <input id="add-name-input" type="text" placeholder="name (optional)">
+        <button id="add-project-btn">Add project</button>
+      </div>
+      <div id="add-project-error" class="error-msg" hidden></div>
+      <div id="project-list" class="project-grid"></div>
+    </section>
+
+    <section id="detail-section" hidden>
+      <button id="back-btn">&larr; All projects</button>
+      <h2 id="detail-title"></h2>
+      <div id="detail-meta" class="meta"></div>
+      <pre id="detail-readme" class="readme"></pre>
+
+      <h3>Agent terminals</h3>
+      <div class="pane-toolbar">
+        <button id="project-new-agent-btn" class="small-btn">+ Agent</button>
+        <button id="project-new-shell-btn" class="small-btn">+ Linux shell</button>
+      </div>
+      <div id="project-terminal-panes"></div>
+
+      <h3>Files</h3>
+      <div class="explorer">
+        <div id="file-tree" class="file-tree"></div>
+        <pre id="file-content" class="file-content">(select a file)</pre>
+      </div>
+
+      <h3>Git History</h3>
+      <pre id="git-graph" class="git-graph"></pre>
+    </section>
+  </main>
+
+  <script>window.DASHBOARD_TOKEN = "__DASHBOARD_TOKEN__";</script>
+  <script src="/static/vendor/xterm/xterm.js"></script>
+  <script src="/static/vendor/xterm/xterm-addon-fit.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

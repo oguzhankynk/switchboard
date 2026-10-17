@@ -1,0 +1,318 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --border: #2a2e38;
+  --text: #e4e6eb;
+  --muted: #8b8f98;
+  --accent: #5b8cff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+}
+
+header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 { margin: 0; font-size: 1.3rem; }
+
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+}
+
+section { margin-bottom: 36px; }
+
+h2 { font-size: 1rem; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
+
+.scope { color: var(--accent); font-weight: normal; font-size: 0.85rem; }
+
+button {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  padding: 0 18px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.6; cursor: wait; }
+
+button#back-btn {
+  background: none;
+  color: var(--accent);
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.readme {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9rem;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.add-project-box {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.add-project-box input {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+#add-path-input { flex: 2; min-width: 220px; }
+#add-name-input { flex: 1; min-width: 120px; }
+
+.error-msg {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+
+.remove-btn {
+  float: right;
+  background: none;
+  color: var(--muted);
+  padding: 0 4px;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.remove-btn:hover { color: #ff6b6b; }
+
+.missing-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: #ff6b6b;
+  margin-left: 6px;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.project-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.project-card:hover { border-color: var(--accent); }
+
+.project-card h3 { margin: 0 0 6px; font-size: 1rem; }
+
+.project-card .branch {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 6px;
+}
+
+.project-card .commit {
+  font-size: 0.8rem;
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.dirty-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: #ffb454;
+  margin-left: 6px;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 10px;
+}
+
+.small-btn {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+.agent-cmd-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.agent-cmd-box label { color: var(--muted); }
+
+.agent-cmd-box input {
+  flex: 1;
+  max-width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-family: monospace;
+}
+
+.pane-toolbar { margin-bottom: 10px; }
+
+.terminal-panes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.term-pane {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.term-pane.dragging { opacity: 0.4; }
+
+.term-pane.drag-over { border-color: var(--accent); }
+
+.term-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  padding: 6px 10px;
+  cursor: grab;
+  user-select: none;
+}
+
+.term-pane-header:active { cursor: grabbing; }
+
+.drag-handle { color: var(--muted); font-size: 0.9rem; }
+
+.term-pane-title { font-size: 0.85rem; font-weight: 600; flex: 1; }
+
+.term-pane-status { color: var(--muted); font-size: 0.75rem; }
+
+.term-pane-header button {
+  background: none;
+  color: var(--muted);
+  padding: 0 6px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.term-pane-header button:hover { color: var(--text); }
+
+.term-pane-body {
+  padding: 8px;
+  height: 360px;
+}
+
+.term-pane.collapsed .term-pane-body { display: none; }
+
+h3 {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 24px 0 10px;
+}
+
+.explorer {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 12px;
+}
+
+.file-tree {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 0.85rem;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.file-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 14px;
+}
+
+.file-tree > ul {
+  padding-left: 0;
+}
+
+.file-tree li { margin: 2px 0; }
+
+.tree-node {
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.tree-node:hover { background: rgba(91, 140, 255, 0.15); }
+
+.tree-node.selected { background: rgba(91, 140, 255, 0.3); }
+
+.tree-twisty {
+  display: inline-block;
+  width: 14px;
+  color: var(--muted);
+}
+
+.file-content, .git-graph {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.git-graph { white-space: pre; overflow-x: auto; }
+
+.ansi-red { color: #ff6b6b; }
+.ansi-green { color: #6bcf7f; }
+.ansi-yellow { color: #ffd166; }
+.ansi-blue { color: #5b8cff; }
+.ansi-magenta { color: #c792ea; }
+.ansi-cyan { color: #5bc0de; }
+.ansi-white, .ansi-black { color: var(--text); }
+.ansi-bright-red { color: #ff8787; }
+.ansi-bright-green { color: #8ee89a; }
+.ansi-bright-yellow { color: #ffe08a; }
+.ansi-bright-blue { color: #85a9ff; }
+.ansi-bright-magenta { color: #dba9f0; }
+.ansi-bright-cyan { color: #83d3f0; }
+.ansi-bright-white, .ansi-bright-black { color: var(--text); }
