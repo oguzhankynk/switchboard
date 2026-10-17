@@ -107,6 +107,22 @@ class SettingsRequest(BaseModel):
     agent_command: str
 
 
+def all_projects_context() -> str:
+    conn = db_connect()
+    rows = conn.execute("SELECT name, path FROM projects ORDER BY name COLLATE NOCASE").fetchall()
+    conn.close()
+    if not rows:
+        return ""
+    lines = [f"- {row['name']}: {row['path']}" for row in rows]
+    return (
+        "This dashboard tracks the following projects:\n"
+        + "\n".join(lines)
+        + "\n\nWhen I ask you to do something across \"all projects\" or "
+        "\"the dashboard's projects\", apply it to each of the above, one "
+        "at a time."
+    )
+
+
 def get_agent_command() -> str:
     conn = db_connect()
     row = conn.execute("SELECT value FROM settings WHERE key = 'agent_command'").fetchone()
@@ -371,6 +387,13 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
         argv = [pty_backend.default_shell()]
     else:
         argv = shlex.split(get_agent_command(), posix=not pty_backend.IS_WINDOWS)
+        if not project:
+            # General scope: the agent has no built-in notion of "the
+            # dashboard's projects" (they can live anywhere on disk), so
+            # tell it up front as its opening message.
+            context = all_projects_context()
+            if context:
+                argv = argv + [context]
     if not argv:
         await websocket.close(code=4400)
         return

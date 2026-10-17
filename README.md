@@ -58,6 +58,11 @@ user profile folder) and a `dashboard.db` SQLite file is created next to
   tabs/sites in your browser from silently hitting the API.
 - The agent command used for new "Agent" terminals is configurable from the
   dashboard UI (defaults to `claude`).
+- A general-scope "Agent" terminal (no project selected) gets the list of
+  tracked projects (name + path) as its opening message, so you can ask it
+  to do something "across all projects" and it knows what that means even
+  though they can live anywhere on disk. A project-scoped agent doesn't
+  need this - its working directory already is that project.
 - Terminals keep running in the background as you switch between projects
   or go back to the main page; closing the browser tab or the server
   process ends them.
