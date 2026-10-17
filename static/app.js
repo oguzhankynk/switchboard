@@ -60,13 +60,13 @@ async function loadProjects() {
     if (p.dirty) {
       const badge = document.createElement("span");
       badge.className = "dirty-badge";
-      badge.textContent = "uncommitted changes";
+      badge.textContent = "· uncommitted changes";
       title.appendChild(badge);
     }
     if (p.missing) {
       const badge = document.createElement("span");
       badge.className = "missing-badge";
-      badge.textContent = "path missing";
+      badge.textContent = "· path missing";
       title.appendChild(badge);
     }
 
@@ -175,7 +175,7 @@ function renderBrowseList() {
     if (entry.is_git) {
       const badge = document.createElement("span");
       badge.className = "git-badge";
-      badge.textContent = "git repo";
+      badge.textContent = "· git repo";
       row.appendChild(badge);
     }
 
