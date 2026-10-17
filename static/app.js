@@ -374,12 +374,12 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
 
   function persist() {
     try {
-      const data = panes.map((p) => ({ kind: p.kind, sessionId: p.sessionId || null }));
+      const data = panes.map((p) => ({ kind: p.kind, sessionId: p.sessionId || null, height: p.height || null }));
       localStorage.setItem(storageKey, JSON.stringify(data));
     } catch (e) { /* noop */ }
   }
 
-  function addPane(kind = "agent", sessionId = null) {
+  function addPane(kind = "agent", sessionId = null, height = null) {
     counter += 1;
     const id = counter;
     const label = kind === "shell" ? "Shell" : "Agent";
@@ -411,6 +411,16 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
     collapseBtn.title = "Collapse";
     header.appendChild(collapseBtn);
 
+    const maxBtn = document.createElement("button");
+    maxBtn.textContent = "⤢";
+    maxBtn.title = "Maximize";
+    header.appendChild(maxBtn);
+
+    const fsBtn = document.createElement("button");
+    fsBtn.textContent = "⛶";
+    fsBtn.title = "Full screen";
+    header.appendChild(fsBtn);
+
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "×";
     closeBtn.title = "Close terminal";
@@ -421,6 +431,12 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
     const body = document.createElement("div");
     body.className = "term-pane-body";
     el.appendChild(body);
+    if (height) body.style.height = `${height}px`;
+
+    const grip = document.createElement("div");
+    grip.className = "term-pane-grip";
+    grip.title = "Drag to resize";
+    el.appendChild(grip);
 
     const term = new Terminal({
       convertEol: true,
@@ -431,10 +447,10 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
     term.loadAddon(fitAddon);
     term.open(body);
 
-    const pane = { id, el, body, status, term, fitAddon, ws: null, kind, sessionId };
+    const pane = { id, el, body, status, term, fitAddon, ws: null, kind, sessionId, height };
 
     function fitAndResize() {
-      if (!el.classList.contains("collapsed")) {
+      if (!el.classList.contains("collapsed") && body.clientHeight > 0 && body.clientWidth > 0) {
         fitAddon.fit();
         if (pane.ws && pane.ws.readyState === WebSocket.OPEN) {
           pane.ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
@@ -495,6 +511,55 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
 
     closeBtn.addEventListener("click", () => removePane(pane));
 
+    function setMaximized(on) {
+      el.classList.toggle("maximized", on);
+      document.body.classList.toggle("has-maximized-pane", on);
+      maxBtn.textContent = on ? "⤡" : "⤢";
+      maxBtn.title = on ? "Restore" : "Maximize";
+      fitAndResize();
+      if (on) term.focus();
+    }
+    maxBtn.addEventListener("click", () => setMaximized(!el.classList.contains("maximized")));
+    pane.exitMaximized = () => { if (el.classList.contains("maximized")) setMaximized(false); };
+
+    fsBtn.addEventListener("click", () => {
+      if (document.fullscreenElement === el) document.exitFullscreen();
+      else if (el.requestFullscreen) el.requestFullscreen().catch(() => { /* noop */ });
+    });
+    el.addEventListener("fullscreenchange", () => {
+      el.classList.toggle("fullscreen", document.fullscreenElement === el);
+      fitAndResize();
+    });
+
+    header.addEventListener("dblclick", (ev) => {
+      if (ev.target === header || ev.target === title) maxBtn.click();
+    });
+
+    // Drag the bottom grip to change the terminal's height.
+    grip.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      grip.setPointerCapture(ev.pointerId);
+      const startY = ev.clientY;
+      const startH = body.clientHeight;
+      const onMove = (e) => {
+        pane.height = Math.max(100, Math.round(startH + e.clientY - startY));
+        body.style.height = `${pane.height}px`;
+      };
+      const onUp = () => {
+        grip.removeEventListener("pointermove", onMove);
+        grip.removeEventListener("pointerup", onUp);
+        grip.removeEventListener("pointercancel", onUp);
+        persist();
+      };
+      grip.addEventListener("pointermove", onMove);
+      grip.addEventListener("pointerup", onUp);
+      grip.addEventListener("pointercancel", onUp);
+    });
+
+    // Refit whenever the body's size changes (grip drag, maximize, window
+    // resize, container becoming visible again).
+    new ResizeObserver(() => fitAndResize()).observe(body);
+
     header.addEventListener("dragstart", () => {
       el.classList.add("dragging");
       header.dataset.dragging = "1";
@@ -529,6 +594,7 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
       try { pane.ws.send(JSON.stringify({ type: "close" })); } catch (e) { /* noop */ }
       try { pane.ws.close(); } catch (e) { /* noop */ }
     }
+    pane.exitMaximized();
     pane.term.dispose();
     pane.el.remove();
     const idx = panes.indexOf(pane);
@@ -548,7 +614,7 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
     let saved = [];
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (e) { /* noop */ }
     if (saved.length) {
-      for (const s of saved) addPane(s.kind, s.sessionId);
+      for (const s of saved) addPane(s.kind, s.sessionId, s.height);
     } else {
       addPane();
     }

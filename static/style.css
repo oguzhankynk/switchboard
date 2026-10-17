@@ -273,6 +273,8 @@ button#back-btn {
   font-family: monospace;
 }
 
+[hidden] { display: none !important; }
+
 .pane-toolbar { margin-bottom: 10px; }
 
 .terminal-panes {
@@ -325,7 +327,44 @@ button#back-btn {
   height: 360px;
 }
 
-.term-pane.collapsed .term-pane-body { display: none; }
+.term-pane.collapsed .term-pane-body,
+.term-pane.collapsed .term-pane-grip { display: none; }
+
+.term-pane-grip {
+  height: 8px;
+  cursor: ns-resize;
+  background: var(--panel);
+  touch-action: none;
+}
+
+.term-pane-grip:hover { background: var(--accent); }
+
+.term-pane.maximized {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.term-pane.maximized .term-pane-body,
+.term-pane.fullscreen .term-pane-body {
+  height: auto !important;
+  flex: 1;
+  min-height: 0;
+}
+
+.term-pane.fullscreen {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+}
+
+.term-pane.maximized .term-pane-grip,
+.term-pane.fullscreen .term-pane-grip { display: none; }
+
+body.has-maximized-pane { overflow: hidden; }
 
 h3 {
   font-size: 0.9rem;
