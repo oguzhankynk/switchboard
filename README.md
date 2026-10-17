@@ -2,8 +2,10 @@
 
 A local web dashboard for running AI coding agents (or plain shells) against
 your git repos from the browser - multiple terminals per project, a file
-explorer, and a git history view. Built to run on WSL2 and be reached from
-a Windows browser, but works on any Linux desktop.
+explorer, and a git history view. Runs the same way on a native Linux
+desktop or inside WSL2 (reachable from Windows via its automatic localhost
+forwarding, no extra setup) - `run.sh` detects which one it's on and prints
+the right URL to open.
 
 ## Requirements
 
@@ -40,9 +42,8 @@ per-install, not part of the repo).
 
 ## Notes
 
-- The server binds to `127.0.0.1` only. On WSL2 that's still reachable from
-  Windows at `localhost:<port>` via WSL2's automatic localhost forwarding,
-  but not from other machines on the network.
+- The server binds to `127.0.0.1` only - reachable from this machine (and,
+  on WSL2, from Windows), never from other machines on the network.
 - Every request to `/api/*` and `/ws/terminal` requires the access token
   (sent automatically by the page itself); this is mainly to stop other
   tabs/sites in your browser from silently hitting the API.
