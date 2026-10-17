@@ -33,10 +33,27 @@
         <input id="add-path-input" type="text" placeholder="/home/user/projects/my-repo">
         <input id="add-name-input" type="text" placeholder="name (optional)">
         <button id="add-project-btn">Add project</button>
+        <button id="browse-btn" class="small-btn">Browse...</button>
       </div>
       <div id="add-project-error" class="error-msg" hidden></div>
       <div id="project-list" class="project-grid"></div>
     </section>
+
+    <div id="browse-modal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <button id="browse-up-btn" class="small-btn">&uarr; Up</button>
+          <span id="browse-path" class="browse-path"></span>
+          <button id="browse-close-btn" class="small-btn">Close</button>
+        </div>
+        <div id="browse-list" class="browse-list"></div>
+        <div class="browse-selected">
+          <h3>Selected</h3>
+          <div id="browse-selected-list"></div>
+          <button id="browse-add-btn" class="small-btn">Add selected</button>
+        </div>
+      </div>
+    </div>
 
     <section id="detail-section" hidden>
       <button id="back-btn">&larr; All projects</button>

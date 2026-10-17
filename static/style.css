@@ -110,6 +110,95 @@ button#back-btn {
   margin-left: 6px;
 }
 
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: min(640px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.browse-path {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browse-list {
+  overflow-y: auto;
+  padding: 6px 0;
+  flex: 1;
+}
+
+.browse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.browse-row:hover { background: rgba(91, 140, 255, 0.1); }
+
+.browse-row .folder-name {
+  flex: 1;
+  cursor: pointer;
+}
+
+.browse-row .git-badge {
+  font-size: 0.7rem;
+  color: var(--accent);
+}
+
+.browse-selected {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+}
+
+.browse-selected h3 { margin: 0 0 8px; }
+
+.browse-selected-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.browse-selected-row input[type="text"] {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}
+
+.browse-selected-row .remove-btn { float: none; }
+
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

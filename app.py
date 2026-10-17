@@ -1,16 +1,12 @@
 import asyncio
-import fcntl
 import json
 import os
-import pty
 import re
 import secrets
 import shlex
-import signal
 import sqlite3
-import struct
 import subprocess
-import termios
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +14,8 @@ from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocke
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+import pty_backend
 
 APP_DIR = Path(__file__).parent
 # Optional: point this at a folder of git repos to seed the (empty) project
@@ -239,6 +237,33 @@ def api_list_projects():
     return result
 
 
+@app.get("/api/browse", dependencies=[Depends(require_token)])
+def api_browse(path: str = ""):
+    target = Path(path).expanduser().resolve() if path else Path.home()
+    if not target.is_dir():
+        raise HTTPException(status_code=400, detail="Not a directory")
+    entries = []
+    try:
+        children = sorted(target.iterdir(), key=lambda p: p.name.lower())
+    except PermissionError:
+        children = []
+    for entry in children:
+        if entry.name.startswith("."):
+            continue
+        try:
+            if entry.is_symlink() or not entry.is_dir():
+                continue
+        except PermissionError:
+            continue
+        entries.append({
+            "name": entry.name,
+            "path": str(entry),
+            "is_git": (entry / ".git").exists(),
+        })
+    parent = str(target.parent) if target.parent != target else None
+    return {"path": str(target), "parent": parent, "entries": entries}
+
+
 @app.post("/api/projects", dependencies=[Depends(require_token)])
 def api_add_project(req: AddProjectRequest):
     path = Path(req.path).expanduser().resolve()
@@ -343,35 +368,40 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
     await websocket.accept()
 
     if kind == "shell":
-        argv = [os.environ.get("SHELL", "/bin/bash")]
+        argv = [pty_backend.default_shell()]
     else:
-        argv = shlex.split(get_agent_command())
+        argv = shlex.split(get_agent_command(), posix=not pty_backend.IS_WINDOWS)
     if not argv:
         await websocket.close(code=4400)
         return
 
-    pid, fd = pty.fork()
-    if pid == 0:
-        try:
-            os.chdir(str(cwd))
-            os.environ["TERM"] = "xterm-256color"
-            os.execvp(argv[0], argv)
-        finally:
-            os._exit(1)
+    session = pty_backend.PtySession(argv, str(cwd), {"TERM": "xterm-256color"})
 
+    # A dedicated reader thread works the same way on every platform - POSIX
+    # pty fds and Windows ConPTY handles don't share a common async-readable
+    # primitive, so we don't try to hook either into the event loop directly.
     loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    stop_reading = threading.Event()
 
-    def on_pty_output():
-        try:
-            data = os.read(fd, 65536)
-        except OSError:
-            data = b""
-        if data:
-            loop.create_task(websocket.send_bytes(data))
-        else:
-            loop.remove_reader(fd)
+    def reader():
+        while not stop_reading.is_set():
+            data = session.read(65536)
+            if not data:
+                break
+            loop.call_soon_threadsafe(queue.put_nowait, data)
+        loop.call_soon_threadsafe(queue.put_nowait, None)
 
-    loop.add_reader(fd, on_pty_output)
+    threading.Thread(target=reader, daemon=True).start()
+
+    async def pump_output():
+        while True:
+            data = await queue.get()
+            if data is None:
+                break
+            await websocket.send_bytes(data)
+
+    pump_task = asyncio.ensure_future(pump_output())
 
     try:
         while True:
@@ -379,30 +409,20 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
             if msg.get("type") == "websocket.disconnect":
                 break
             if msg.get("bytes") is not None:
-                os.write(fd, msg["bytes"])
+                session.write(msg["bytes"])
             elif msg.get("text") is not None:
                 try:
                     control = json.loads(msg["text"])
                 except ValueError:
                     continue
                 if control.get("type") == "resize":
-                    rows, cols = int(control["rows"]), int(control["cols"])
-                    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+                    session.resize(int(control["rows"]), int(control["cols"]))
     except WebSocketDisconnect:
         pass
     finally:
-        try:
-            loop.remove_reader(fd)
-        except Exception:
-            pass
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        stop_reading.set()
+        session.terminate()
+        pump_task.cancel()
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -2,10 +2,10 @@
 
 A local web dashboard for running AI coding agents (or plain shells) against
 your git repos from the browser - multiple terminals per project, a file
-explorer, and a git history view. Runs the same way on a native Linux
-desktop or inside WSL2 (reachable from Windows via its automatic localhost
-forwarding, no extra setup) - `run.sh` detects which one it's on and prints
-the right URL to open.
+explorer, and a git history view. Runs natively on Linux, WSL2 (reachable
+from Windows via its automatic localhost forwarding, no extra setup), and
+native Windows - `run.py` detects which one it's on and prints the right
+URL to open.
 
 ## Requirements
 
@@ -20,16 +20,21 @@ the right URL to open.
 pip install -r requirements.txt
 ```
 
+On Windows this also installs `pywinpty`, which provides the ConPTY-backed
+terminal (the plain POSIX `pty` module Linux/WSL2 use doesn't exist there).
+
 ## Running
 
 ```bash
-./run.sh
+./run.sh      # Linux / WSL2
+.\run.ps1     # Windows (PowerShell)
+python run.py # any platform, directly
 ```
 
 Open `http://localhost:8787` in your browser. On first run a random access
-token is generated at `~/.agent-dashboard-token` and a `dashboard.db`
-SQLite file is created next to `app.py` (both are gitignored - they're
-per-install, not part of the repo).
+token is generated at `~/.agent-dashboard-token` (on Windows, under your
+user profile folder) and a `dashboard.db` SQLite file is created next to
+`app.py` (both are gitignored - they're per-install, not part of the repo).
 
 ### Optional environment variables
 
@@ -44,6 +49,10 @@ per-install, not part of the repo).
 
 - The server binds to `127.0.0.1` only - reachable from this machine (and,
   on WSL2, from Windows), never from other machines on the network.
+- The Windows terminal backend (ConPTY via `pywinpty`) has not been
+  exercised on real Windows as part of building this - the Linux/WSL2 path
+  (plain POSIX `pty`) has. Worth a quick smoke test there before relying on
+  it.
 - Every request to `/api/*` and `/ws/terminal` requires the access token
   (sent automatically by the page itself); this is mainly to stop other
   tabs/sites in your browser from silently hitting the API.
@@ -52,3 +61,7 @@ per-install, not part of the repo).
 - Terminals keep running in the background as you switch between projects
   or go back to the main page; closing the browser tab or the server
   process ends them.
+
+## License
+
+MIT - see [LICENSE](LICENSE).

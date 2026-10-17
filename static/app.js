@@ -21,6 +21,14 @@ const addProjectBtn = document.getElementById("add-project-btn");
 const addProjectError = document.getElementById("add-project-error");
 const agentCmdInput = document.getElementById("agent-cmd-input");
 const agentCmdSave = document.getElementById("agent-cmd-save");
+const browseBtn = document.getElementById("browse-btn");
+const browseModal = document.getElementById("browse-modal");
+const browseUpBtn = document.getElementById("browse-up-btn");
+const browsePathEl = document.getElementById("browse-path");
+const browseCloseBtn = document.getElementById("browse-close-btn");
+const browseListEl = document.getElementById("browse-list");
+const browseSelectedListEl = document.getElementById("browse-selected-list");
+const browseAddBtn = document.getElementById("browse-add-btn");
 
 let currentProjectId = null;
 
@@ -95,6 +103,128 @@ addProjectBtn.addEventListener("click", async () => {
   addPathInput.value = "";
   addNameInput.value = "";
   loadProjects();
+});
+
+// --- Folder browser (server-side; browsers never expose real filesystem
+// paths from a native picker, so this is our own minimal file dialog) ---
+
+let browseCurrentPath = null;
+let browseParentPath = null;
+const browseSelected = new Map(); // path -> name
+
+function renderBrowseSelected() {
+  browseSelectedListEl.innerHTML = "";
+  for (const [path, name] of browseSelected) {
+    const row = document.createElement("div");
+    row.className = "browse-selected-row";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = name;
+    nameInput.addEventListener("input", () => browseSelected.set(path, nameInput.value));
+    row.appendChild(nameInput);
+
+    const pathLabel = document.createElement("span");
+    pathLabel.className = "meta";
+    pathLabel.textContent = path;
+    row.appendChild(pathLabel);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "remove-btn";
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", () => {
+      browseSelected.delete(path);
+      renderBrowseSelected();
+      renderBrowseList();
+    });
+    row.appendChild(removeBtn);
+
+    browseSelectedListEl.appendChild(row);
+  }
+  browseAddBtn.textContent = `Add selected (${browseSelected.size})`;
+  browseAddBtn.disabled = browseSelected.size === 0;
+}
+
+let browseEntries = [];
+
+function renderBrowseList() {
+  browseListEl.innerHTML = "";
+  for (const entry of browseEntries) {
+    const row = document.createElement("div");
+    row.className = "browse-row";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = browseSelected.has(entry.path);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        browseSelected.set(entry.path, entry.name);
+      } else {
+        browseSelected.delete(entry.path);
+      }
+      renderBrowseSelected();
+    });
+    row.appendChild(checkbox);
+
+    const name = document.createElement("span");
+    name.className = "folder-name";
+    name.textContent = entry.name;
+    name.addEventListener("click", () => loadBrowsePath(entry.path));
+    row.appendChild(name);
+
+    if (entry.is_git) {
+      const badge = document.createElement("span");
+      badge.className = "git-badge";
+      badge.textContent = "git repo";
+      row.appendChild(badge);
+    }
+
+    browseListEl.appendChild(row);
+  }
+}
+
+async function loadBrowsePath(path) {
+  const res = await fetch(`/api/browse?path=${encodeURIComponent(path || "")}`, { headers: authHeaders });
+  if (!res.ok) return;
+  const data = await res.json();
+  browseCurrentPath = data.path;
+  browseParentPath = data.parent;
+  browsePathEl.textContent = data.path;
+  browseUpBtn.disabled = !browseParentPath;
+  browseEntries = data.entries;
+  renderBrowseList();
+}
+
+browseBtn.addEventListener("click", () => {
+  browseModal.hidden = false;
+  browseSelected.clear();
+  renderBrowseSelected();
+  loadBrowsePath(addPathInput.value.trim() || "");
+});
+
+browseCloseBtn.addEventListener("click", () => { browseModal.hidden = true; });
+browseUpBtn.addEventListener("click", () => { if (browseParentPath) loadBrowsePath(browseParentPath); });
+
+browseAddBtn.addEventListener("click", async () => {
+  const entries = Array.from(browseSelected.entries());
+  const errors = [];
+  for (const [path, name] of entries) {
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: JSON.stringify({ path, name: name || null }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      errors.push(`${name}: ${data.detail || "failed"}`);
+    }
+  }
+  browseModal.hidden = true;
+  loadProjects();
+  if (errors.length) {
+    addProjectError.textContent = errors.join("; ");
+    addProjectError.hidden = false;
+  }
 });
 
 async function openProject(id, name) {
