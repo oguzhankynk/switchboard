@@ -120,6 +120,8 @@ button#back-btn {
   z-index: 100;
 }
 
+.modal-overlay[hidden] { display: none; }
+
 .modal {
   background: var(--panel);
   border: 1px solid var(--border);
