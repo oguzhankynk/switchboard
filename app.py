@@ -22,15 +22,15 @@ APP_DIR = Path(__file__).parent
 # list from on first run, and to use as the working directory for terminals
 # opened with no project selected. Unset by default - nothing is assumed
 # about where any given user keeps their projects.
-_seed_env = os.environ.get("DASHBOARD_PROJECTS_DIR", "").strip()
+_seed_env = os.environ.get("SWITCHBOARD_PROJECTS_DIR", "").strip()
 SEED_DIR = Path(_seed_env).expanduser().resolve() if _seed_env else None
 GENERAL_CWD = SEED_DIR if SEED_DIR else Path.home()
 DEFAULT_AGENT_COMMAND = "claude"
 MAX_FILE_BYTES = 1_000_000
 HIDDEN_TOP_LEVEL = {".git"}
 
-TOKEN_FILE = Path.home() / ".agent-dashboard-token"
-DB_PATH = APP_DIR / "dashboard.db"
+TOKEN_FILE = Path.home() / ".switchboard-token"
+DB_PATH = APP_DIR / "switchboard.db"
 
 
 def load_or_create_token() -> str:
@@ -42,7 +42,7 @@ def load_or_create_token() -> str:
     return token
 
 
-DASHBOARD_TOKEN = load_or_create_token()
+SWITCHBOARD_TOKEN = load_or_create_token()
 
 
 def db_connect() -> sqlite3.Connection:
@@ -71,8 +71,8 @@ def init_db() -> None:
         (DEFAULT_AGENT_COMMAND,),
     )
     conn.commit()
-    # One-time seed: if the table is empty and DASHBOARD_PROJECTS_DIR is set,
-    # pick up every git repo already sitting there so the dashboard isn't
+    # One-time seed: if the table is empty and SWITCHBOARD_PROJECTS_DIR is set,
+    # pick up every git repo already sitting there so switchboard isn't
     # empty on first run. No-op if the env var isn't set.
     count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
     if count == 0 and SEED_DIR and SEED_DIR.exists():
@@ -89,12 +89,12 @@ def init_db() -> None:
 
 init_db()
 
-app = FastAPI(title="Agent Dashboard")
+app = FastAPI(title="Switchboard")
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 
 
-def require_token(x_dashboard_token: str = Header(default="")):
-    if not secrets.compare_digest(x_dashboard_token, DASHBOARD_TOKEN):
+def require_token(x_switchboard_token: str = Header(default="")):
+    if not secrets.compare_digest(x_switchboard_token, SWITCHBOARD_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
@@ -115,10 +115,10 @@ def all_projects_context() -> str:
         return ""
     lines = [f"- {row['name']}: {row['path']}" for row in rows]
     return (
-        "This dashboard tracks the following projects:\n"
+        "Switchboard tracks the following projects:\n"
         + "\n".join(lines)
         + "\n\nWhen I ask you to do something across \"all projects\" or "
-        "\"the dashboard's projects\", apply it to each of the above, one "
+        "\"switchboard's projects\", apply it to each of the above, one "
         "at a time."
     )
 
@@ -298,7 +298,7 @@ def api_add_project(req: AddProjectRequest):
         new_id = cur.lastrowid
     except sqlite3.IntegrityError:
         conn.close()
-        raise HTTPException(status_code=409, detail="This path is already in the dashboard")
+        raise HTTPException(status_code=409, detail="This path is already in switchboard")
     conn.close()
     return {"id": new_id, "name": name, "path": str(path)}
 
@@ -412,7 +412,7 @@ def session_reader(sess: TermSession) -> None:
 
 @app.websocket("/ws/terminal")
 async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", kind: str = "agent", session: str = ""):
-    if not secrets.compare_digest(token, DASHBOARD_TOKEN):
+    if not secrets.compare_digest(token, SWITCHBOARD_TOKEN):
         await websocket.close(code=4401)
         return
 
@@ -435,8 +435,8 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
         else:
             argv = shlex.split(get_agent_command(), posix=not pty_backend.IS_WINDOWS)
             if not project:
-                # General scope: the agent has no built-in notion of "the
-                # dashboard's projects" (they can live anywhere on disk), so
+                # General scope: the agent has no built-in notion of
+                # "switchboard's projects" (they can live anywhere on disk), so
                 # tell it up front as its opening message.
                 context = all_projects_context()
                 if context:
@@ -509,4 +509,4 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
 @app.get("/", response_class=HTMLResponse)
 def index():
     html = (APP_DIR / "static" / "index.html").read_text()
-    return html.replace("__DASHBOARD_TOKEN__", DASHBOARD_TOKEN)
+    return html.replace("__SWITCHBOARD_TOKEN__", SWITCHBOARD_TOKEN)

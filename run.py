@@ -21,7 +21,7 @@ def describe_env() -> str:
 
 def main() -> None:
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    port = int(os.environ.get("DASHBOARD_PORT", "8787"))
+    port = int(os.environ.get("SWITCHBOARD_PORT", "8787"))
 
     env = describe_env()
     if env == "wsl2":

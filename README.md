@@ -1,4 +1,4 @@
-# Agent Dashboard
+# Switchboard
 
 A local web dashboard for running AI coding agents (or plain shells) against
 your git repos from the browser - multiple terminals per project, a file
@@ -32,18 +32,18 @@ python run.py # any platform, directly
 ```
 
 Open `http://localhost:8787` in your browser. On first run a random access
-token is generated at `~/.agent-dashboard-token` (on Windows, under your
-user profile folder) and a `dashboard.db` SQLite file is created next to
+token is generated at `~/.switchboard-token` (on Windows, under your
+user profile folder) and a `switchboard.db` SQLite file is created next to
 `app.py` (both are gitignored - they're per-install, not part of the repo).
 
 ### Optional environment variables
 
-- `DASHBOARD_PROJECTS_DIR` - a folder of git repos. If set and the project
+- `SWITCHBOARD_PROJECTS_DIR` - a folder of git repos. If set and the project
   list is empty, it's used to seed the list on first run, and it's the
   working directory for terminals opened with no project selected. Unset by
   default - nothing is assumed about where you keep your projects; add them
-  one by one from the dashboard's "Add project" box instead.
-- `DASHBOARD_PORT` - port to listen on (default `8787`).
+  one by one from switchboard's "Add project" box instead.
+- `SWITCHBOARD_PORT` - port to listen on (default `8787`).
 
 ## Notes
 
@@ -57,7 +57,7 @@ user profile folder) and a `dashboard.db` SQLite file is created next to
   (sent automatically by the page itself); this is mainly to stop other
   tabs/sites in your browser from silently hitting the API.
 - The agent command used for new "Agent" terminals is configurable from the
-  dashboard UI (defaults to `claude`).
+  switchboard UI (defaults to `claude`).
 - A general-scope "Agent" terminal (no project selected) gets the list of
   tracked projects (name + path) as its opening message, so you can ask it
   to do something "across all projects" and it knows what that means even

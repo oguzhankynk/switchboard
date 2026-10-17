@@ -32,7 +32,7 @@ const browseAddBtn = document.getElementById("browse-add-btn");
 
 let currentProjectId = null;
 
-const authHeaders = { "X-Dashboard-Token": window.DASHBOARD_TOKEN || "" };
+const authHeaders = { "X-Switchboard-Token": window.SWITCHBOARD_TOKEN || "" };
 
 async function loadProjects() {
   const res = await fetch("/api/projects", { headers: authHeaders });
@@ -45,10 +45,10 @@ async function loadProjects() {
     const removeBtn = document.createElement("button");
     removeBtn.className = "remove-btn";
     removeBtn.textContent = "×";
-    removeBtn.title = "Remove from dashboard";
+    removeBtn.title = "Remove from switchboard";
     removeBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
-      if (!confirm(`Remove "${p.name}" from the dashboard? (files on disk are untouched)`)) return;
+      if (!confirm(`Remove "${p.name}" from switchboard? (files on disk are untouched)`)) return;
       await fetch(`/api/projects/${p.id}`, { method: "DELETE", headers: authHeaders });
       closeProjectPanes(p.id);
       loadProjects();
@@ -448,7 +448,7 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
       status.textContent = "connecting...";
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const params = new URLSearchParams({
-        token: window.DASHBOARD_TOKEN || "",
+        token: window.SWITCHBOARD_TOKEN || "",
         project: getScopeId() || "",
         kind,
       });
@@ -557,7 +557,7 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
   return { addPane, closeAll, refitAll, restore, panes };
 }
 
-const generalPanes = makePaneManager(generalPanesEl, () => null, "dashboard:panes:general");
+const generalPanes = makePaneManager(generalPanesEl, () => null, "switchboard:panes:general");
 
 // One pane manager per project, created lazily and kept alive for the whole
 // browser session - switching projects or going back to the main menu only
@@ -573,7 +573,7 @@ function showProjectPanes(id) {
     const container = document.createElement("div");
     container.className = "terminal-panes";
     projectPanesEl.appendChild(container);
-    const manager = makePaneManager(container, () => id, `dashboard:panes:project:${id}`);
+    const manager = makePaneManager(container, () => id, `switchboard:panes:project:${id}`);
     entry = { container, manager };
     projectPaneManagers.set(id, entry);
     manager.restore();
@@ -588,7 +588,7 @@ function closeProjectPanes(id) {
   entry.manager.closeAll();
   entry.container.remove();
   projectPaneManagers.delete(id);
-  try { localStorage.removeItem(`dashboard:panes:project:${id}`); } catch (e) { /* noop */ }
+  try { localStorage.removeItem(`switchboard:panes:project:${id}`); } catch (e) { /* noop */ }
 }
 
 generalNewAgentBtn.addEventListener("click", () => generalPanes.addPane("agent"));
