@@ -366,56 +366,104 @@ def api_project_git_graph(project_id: int):
     return {"segments": ansi_to_segments(output)}
 
 
+class TermSession:
+    """A PTY + its live subscribers, kept alive independently of any single
+    WebSocket connection so a page refresh (new socket) can reattach to the
+    same running agent instead of killing and restarting it."""
+
+    def __init__(self, session_id: str, pty_session: "pty_backend.PtySession", loop: asyncio.AbstractEventLoop):
+        self.id = session_id
+        self.pty_session = pty_session
+        self.loop = loop
+        self.buffer = bytearray()
+        self.queues: set[asyncio.Queue] = set()
+        self.lock = threading.Lock()
+
+
+SESSIONS: dict[str, TermSession] = {}
+sessions_lock = threading.Lock()
+MAX_SESSION_BUFFER = 1_000_000
+
+
+def session_reader(sess: TermSession) -> None:
+    # One dedicated thread per session for its whole lifetime - POSIX pty fds
+    # and Windows ConPTY handles don't share a common async-readable
+    # primitive, so we don't try to hook either into the event loop directly.
+    while True:
+        data = sess.pty_session.read(65536)
+        if not data:
+            break
+        with sess.lock:
+            sess.buffer.extend(data)
+            if len(sess.buffer) > MAX_SESSION_BUFFER:
+                del sess.buffer[: len(sess.buffer) - MAX_SESSION_BUFFER]
+            queues = list(sess.queues)
+        for q in queues:
+            sess.loop.call_soon_threadsafe(q.put_nowait, data)
+    # The PTY exited on its own (agent/shell quit) - clean up and let any
+    # attached viewers know the stream ended.
+    with sessions_lock:
+        SESSIONS.pop(sess.id, None)
+    with sess.lock:
+        queues = list(sess.queues)
+    for q in queues:
+        sess.loop.call_soon_threadsafe(q.put_nowait, None)
+
+
 @app.websocket("/ws/terminal")
-async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", kind: str = "agent"):
+async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", kind: str = "agent", session: str = ""):
     if not secrets.compare_digest(token, DASHBOARD_TOKEN):
         await websocket.close(code=4401)
         return
 
-    if project:
-        try:
-            cwd = project_dir(int(project))
-        except (ValueError, HTTPException):
-            await websocket.close(code=4404)
-            return
-    else:
-        cwd = GENERAL_CWD
-
     await websocket.accept()
 
-    if kind == "shell":
-        argv = [pty_backend.default_shell()]
+    sess = SESSIONS.get(session) if session else None
+
+    if sess is None:
+        if project:
+            try:
+                cwd = project_dir(int(project))
+            except (ValueError, HTTPException):
+                await websocket.close(code=4404)
+                return
+        else:
+            cwd = GENERAL_CWD
+
+        if kind == "shell":
+            argv = [pty_backend.default_shell()]
+        else:
+            argv = shlex.split(get_agent_command(), posix=not pty_backend.IS_WINDOWS)
+            if not project:
+                # General scope: the agent has no built-in notion of "the
+                # dashboard's projects" (they can live anywhere on disk), so
+                # tell it up front as its opening message.
+                context = all_projects_context()
+                if context:
+                    argv = argv + [context]
+        if not argv:
+            await websocket.close(code=4400)
+            return
+
+        pty_session = pty_backend.PtySession(argv, str(cwd), {"TERM": "xterm-256color"})
+        session_id = secrets.token_hex(16)
+        sess = TermSession(session_id, pty_session, asyncio.get_event_loop())
+        with sessions_lock:
+            SESSIONS[session_id] = sess
+        threading.Thread(target=session_reader, args=(sess,), daemon=True).start()
     else:
-        argv = shlex.split(get_agent_command(), posix=not pty_backend.IS_WINDOWS)
-        if not project:
-            # General scope: the agent has no built-in notion of "the
-            # dashboard's projects" (they can live anywhere on disk), so
-            # tell it up front as its opening message.
-            context = all_projects_context()
-            if context:
-                argv = argv + [context]
-    if not argv:
-        await websocket.close(code=4400)
-        return
+        session_id = session
 
-    session = pty_backend.PtySession(argv, str(cwd), {"TERM": "xterm-256color"})
+    await websocket.send_text(json.dumps({"type": "session", "id": session_id}))
 
-    # A dedicated reader thread works the same way on every platform - POSIX
-    # pty fds and Windows ConPTY handles don't share a common async-readable
-    # primitive, so we don't try to hook either into the event loop directly.
-    loop = asyncio.get_event_loop()
+    # Snapshot the backlog and subscribe atomically (same lock the reader
+    # thread uses) so no bytes are lost or duplicated at the join point.
     queue: asyncio.Queue = asyncio.Queue()
-    stop_reading = threading.Event()
-
-    def reader():
-        while not stop_reading.is_set():
-            data = session.read(65536)
-            if not data:
-                break
-            loop.call_soon_threadsafe(queue.put_nowait, data)
-        loop.call_soon_threadsafe(queue.put_nowait, None)
-
-    threading.Thread(target=reader, daemon=True).start()
+    with sess.lock:
+        backlog = bytes(sess.buffer)
+        sess.queues.add(queue)
+    if backlog:
+        await websocket.send_bytes(backlog)
 
     async def pump_output():
         while True:
@@ -426,26 +474,36 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
 
     pump_task = asyncio.ensure_future(pump_output())
 
+    explicit_close = False
     try:
         while True:
             msg = await websocket.receive()
             if msg.get("type") == "websocket.disconnect":
                 break
             if msg.get("bytes") is not None:
-                session.write(msg["bytes"])
+                sess.pty_session.write(msg["bytes"])
             elif msg.get("text") is not None:
                 try:
                     control = json.loads(msg["text"])
                 except ValueError:
                     continue
                 if control.get("type") == "resize":
-                    session.resize(int(control["rows"]), int(control["cols"]))
+                    sess.pty_session.resize(int(control["rows"]), int(control["cols"]))
+                elif control.get("type") == "close":
+                    # The user closed this pane - end the agent/shell for
+                    # real, rather than just dropping this one viewer.
+                    explicit_close = True
+                    break
     except WebSocketDisconnect:
         pass
     finally:
-        stop_reading.set()
-        session.terminate()
+        with sess.lock:
+            sess.queues.discard(queue)
         pump_task.cancel()
+        if explicit_close:
+            with sessions_lock:
+                SESSIONS.pop(session_id, None)
+            sess.pty_session.terminate()
 
 
 @app.get("/", response_class=HTMLResponse)

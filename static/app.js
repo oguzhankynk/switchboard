@@ -368,11 +368,18 @@ backBtn.addEventListener("click", () => {
 // run side by side. Panes can be added, closed, collapsed, and reordered by
 // dragging their header.
 
-function makePaneManager(containerEl, getScopeId) {
+function makePaneManager(containerEl, getScopeId, storageKey) {
   const panes = [];
   let counter = 0;
 
-  function addPane(kind = "agent") {
+  function persist() {
+    try {
+      const data = panes.map((p) => ({ kind: p.kind, sessionId: p.sessionId || null }));
+      localStorage.setItem(storageKey, JSON.stringify(data));
+    } catch (e) { /* noop */ }
+  }
+
+  function addPane(kind = "agent", sessionId = null) {
     counter += 1;
     const id = counter;
     const label = kind === "shell" ? "Shell" : "Agent";
@@ -424,7 +431,7 @@ function makePaneManager(containerEl, getScopeId) {
     term.loadAddon(fitAddon);
     term.open(body);
 
-    const pane = { id, el, body, status, term, fitAddon, ws: null };
+    const pane = { id, el, body, status, term, fitAddon, ws: null, kind, sessionId };
 
     function fitAndResize() {
       if (!el.classList.contains("collapsed")) {
@@ -445,6 +452,7 @@ function makePaneManager(containerEl, getScopeId) {
         project: getScopeId() || "",
         kind,
       });
+      if (pane.sessionId) params.set("session", pane.sessionId);
       const socket = new WebSocket(`${proto}://${location.host}/ws/terminal?${params.toString()}`);
       socket.binaryType = "arraybuffer";
       pane.ws = socket;
@@ -454,7 +462,20 @@ function makePaneManager(containerEl, getScopeId) {
         fitAndResize();
       };
       socket.onmessage = (ev) => {
-        if (ev.data instanceof ArrayBuffer) term.write(new Uint8Array(ev.data));
+        if (ev.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(ev.data));
+          return;
+        }
+        // Text frames are control messages, e.g. the backend telling us
+        // which session id this pane is now attached to so a future page
+        // reload can reconnect to the same running agent/shell.
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "session" && msg.id) {
+            pane.sessionId = msg.id;
+            persist();
+          }
+        } catch (e) { /* noop */ }
       };
       socket.onclose = () => { status.textContent = "closed"; };
       socket.onerror = () => { status.textContent = "error"; };
@@ -497,15 +518,22 @@ function makePaneManager(containerEl, getScopeId) {
     containerEl.appendChild(el);
     connect();
     pane._fitAndResize = fitAndResize;
+    persist();
     return pane;
   }
 
   function removePane(pane) {
-    if (pane.ws) { try { pane.ws.close(); } catch (e) { /* noop */ } }
+    if (pane.ws) {
+      // Tell the backend to actually end this agent/shell, not just drop
+      // this one viewer - otherwise it would keep running unreachable.
+      try { pane.ws.send(JSON.stringify({ type: "close" })); } catch (e) { /* noop */ }
+      try { pane.ws.close(); } catch (e) { /* noop */ }
+    }
     pane.term.dispose();
     pane.el.remove();
     const idx = panes.indexOf(pane);
     if (idx >= 0) panes.splice(idx, 1);
+    persist();
   }
 
   function closeAll() {
@@ -516,10 +544,20 @@ function makePaneManager(containerEl, getScopeId) {
     for (const pane of panes) if (pane._fitAndResize) pane._fitAndResize();
   }
 
-  return { addPane, closeAll, refitAll, panes };
+  function restore() {
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (e) { /* noop */ }
+    if (saved.length) {
+      for (const s of saved) addPane(s.kind, s.sessionId);
+    } else {
+      addPane();
+    }
+  }
+
+  return { addPane, closeAll, refitAll, restore, panes };
 }
 
-const generalPanes = makePaneManager(generalPanesEl, () => null);
+const generalPanes = makePaneManager(generalPanesEl, () => null, "dashboard:panes:general");
 
 // One pane manager per project, created lazily and kept alive for the whole
 // browser session - switching projects or going back to the main menu only
@@ -535,10 +573,10 @@ function showProjectPanes(id) {
     const container = document.createElement("div");
     container.className = "terminal-panes";
     projectPanesEl.appendChild(container);
-    const manager = makePaneManager(container, () => id);
+    const manager = makePaneManager(container, () => id, `dashboard:panes:project:${id}`);
     entry = { container, manager };
     projectPaneManagers.set(id, entry);
-    manager.addPane();
+    manager.restore();
   } else {
     entry.manager.refitAll();
   }
@@ -550,6 +588,7 @@ function closeProjectPanes(id) {
   entry.manager.closeAll();
   entry.container.remove();
   projectPaneManagers.delete(id);
+  try { localStorage.removeItem(`dashboard:panes:project:${id}`); } catch (e) { /* noop */ }
 }
 
 generalNewAgentBtn.addEventListener("click", () => generalPanes.addPane("agent"));
@@ -588,4 +627,4 @@ agentCmdSave.addEventListener("click", async () => {
 
 loadProjects();
 loadAgentCommand();
-generalPanes.addPane();
+generalPanes.restore();
