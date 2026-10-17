@@ -20,12 +20,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 APP_DIR = Path(__file__).parent
-SEED_DIR = Path.home() / "Calisma" / "projects"
+# Optional: point this at a folder of git repos to seed the (empty) project
+# list from on first run, and to use as the working directory for terminals
+# opened with no project selected. Unset by default - nothing is assumed
+# about where any given user keeps their projects.
+_seed_env = os.environ.get("DASHBOARD_PROJECTS_DIR", "").strip()
+SEED_DIR = Path(_seed_env).expanduser().resolve() if _seed_env else None
+GENERAL_CWD = SEED_DIR if SEED_DIR else Path.home()
 DEFAULT_AGENT_COMMAND = "claude"
 MAX_FILE_BYTES = 1_000_000
 HIDDEN_TOP_LEVEL = {".git"}
 
-TOKEN_FILE = Path.home() / ".calisma-dashboard-token"
+TOKEN_FILE = Path.home() / ".agent-dashboard-token"
 DB_PATH = APP_DIR / "dashboard.db"
 
 
@@ -67,10 +73,11 @@ def init_db() -> None:
         (DEFAULT_AGENT_COMMAND,),
     )
     conn.commit()
-    # One-time seed: if the table is empty, pick up every git repo already
-    # sitting under ~/Calisma/projects so the dashboard isn't empty on first run.
+    # One-time seed: if the table is empty and DASHBOARD_PROJECTS_DIR is set,
+    # pick up every git repo already sitting there so the dashboard isn't
+    # empty on first run. No-op if the env var isn't set.
     count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
-    if count == 0 and SEED_DIR.exists():
+    if count == 0 and SEED_DIR and SEED_DIR.exists():
         now = datetime.now(timezone.utc).isoformat()
         for entry in sorted(SEED_DIR.iterdir()):
             if entry.is_dir() and (entry / ".git").exists():
@@ -84,7 +91,7 @@ def init_db() -> None:
 
 init_db()
 
-app = FastAPI(title="Calisma Dashboard")
+app = FastAPI(title="Agent Dashboard")
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 
 
@@ -331,7 +338,7 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
             await websocket.close(code=4404)
             return
     else:
-        cwd = SEED_DIR
+        cwd = GENERAL_CWD
 
     await websocket.accept()
 
