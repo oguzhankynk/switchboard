@@ -262,6 +262,20 @@ button#back-btn {
 
 .agent-cmd-box label { color: var(--muted); }
 
+.agent-cmd-box { flex-wrap: wrap; }
+
+.agent-cmd-status { color: var(--muted); }
+
+.terminal-panes:empty::before {
+  content: "No terminals open. Check the agent command above, then use + Agent or + Linux shell.";
+  display: block;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
 .agent-cmd-box input {
   flex: 1;
   max-width: 320px;

@@ -21,6 +21,8 @@ const addProjectBtn = document.getElementById("add-project-btn");
 const addProjectError = document.getElementById("add-project-error");
 const agentCmdInput = document.getElementById("agent-cmd-input");
 const agentCmdSave = document.getElementById("agent-cmd-save");
+const agentPromptInput = document.getElementById("agent-prompt-input");
+const agentCmdStatus = document.getElementById("agent-cmd-status");
 const browseBtn = document.getElementById("browse-btn");
 const browseModal = document.getElementById("browse-modal");
 const browseUpBtn = document.getElementById("browse-up-btn");
@@ -613,11 +615,10 @@ function makePaneManager(containerEl, getScopeId, storageKey) {
   function restore() {
     let saved = [];
     try { saved = JSON.parse(localStorage.getItem(storageKey) || "[]"); } catch (e) { /* noop */ }
-    if (saved.length) {
-      for (const s of saved) addPane(s.kind, s.sessionId, s.height);
-    } else {
-      addPane();
-    }
+    // No pane is opened automatically when nothing was saved: the default
+    // agent command may not even be installed, so let the user check it and
+    // open one themselves.
+    for (const s of saved) addPane(s.kind, s.sessionId, s.height);
   }
 
   return { addPane, closeAll, refitAll, restore, panes };
@@ -674,12 +675,29 @@ window.addEventListener("resize", () => {
   if (entry) entry.manager.refitAll();
 });
 
+let promptDefaults = {};
+
+// "/usr/bin/opencode --foo" -> "opencode", "claude.exe" -> "claude"; mirrors
+// default_prompt_template() on the backend.
+function commandName(command) {
+  const first = command.trim().split(/\s+/)[0] || "";
+  return first.split(/[\\/]/).pop().replace(/\.[^.]*$/, "").toLowerCase();
+}
+
 async function loadAgentCommand() {
   const res = await fetch("/api/settings", { headers: authHeaders });
   if (!res.ok) return;
   const data = await res.json();
   agentCmdInput.value = data.agent_command;
+  agentPromptInput.value = data.prompt_template;
+  promptDefaults = data.prompt_defaults || {};
 }
+
+// Switching to a known agent fills in how it takes an opening prompt; an
+// unknown one gets none rather than a guess.
+agentCmdInput.addEventListener("input", () => {
+  agentPromptInput.value = promptDefaults[commandName(agentCmdInput.value)] ?? "";
+});
 
 agentCmdSave.addEventListener("click", async () => {
   const agent_command = agentCmdInput.value.trim();
@@ -687,8 +705,14 @@ agentCmdSave.addEventListener("click", async () => {
   const res = await fetch("/api/settings", {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders },
-    body: JSON.stringify({ agent_command }),
+    body: JSON.stringify({ agent_command, prompt_template: agentPromptInput.value }),
   });
+  if (res.ok) {
+    agentCmdStatus.textContent = "Saved - applies to new terminals";
+  } else {
+    const err = await res.json().catch(() => ({}));
+    agentCmdStatus.textContent = err.detail || "Save failed";
+  }
 });
 
 loadProjects();

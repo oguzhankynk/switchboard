@@ -63,6 +63,14 @@ user profile folder) and a `switchboard.db` SQLite file is created next to
   to do something "across all projects" and it knows what that means even
   though they can live anywhere on disk. A project-scoped agent doesn't
   need this - its working directory already is that project.
+- How that opening message is passed depends on the agent CLI, so it is
+  configurable next to the command ("Opening prompt args", `{prompt}` is
+  replaced by the text). Defaults: `claude` → `{prompt}`, `opencode` →
+  `--prompt {prompt}`, `cline` → nothing (a positional prompt makes cline run
+  a one-shot auto-approved task instead of opening its TUI). Unknown commands
+  get no opening message.
+- No terminal is opened automatically on first visit; if the configured
+  command isn't on `PATH`, the pane says so instead of staying blank.
 - Terminals keep running in the background as you switch between projects
   or go back to the main page; closing the browser tab or the server
   process ends them.

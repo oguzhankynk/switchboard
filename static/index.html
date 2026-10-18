@@ -18,7 +18,10 @@
       <div class="agent-cmd-box">
         <label for="agent-cmd-input">Command for new terminals</label>
         <input id="agent-cmd-input" type="text" placeholder="claude">
+        <label for="agent-prompt-input" title="How the general-scope agent receives the project list as its opening prompt. {prompt} is replaced by the text; leave empty to send nothing.">Opening prompt args</label>
+        <input id="agent-prompt-input" type="text" placeholder="(none)">
         <button id="agent-cmd-save" class="small-btn">Save</button>
+        <span id="agent-cmd-status" class="agent-cmd-status"></span>
       </div>
       <div class="pane-toolbar">
         <button id="general-new-agent-btn" class="small-btn">+ Agent</button>

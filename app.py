@@ -4,6 +4,7 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -26,6 +27,17 @@ _seed_env = os.environ.get("SWITCHBOARD_PROJECTS_DIR", "").strip()
 SEED_DIR = Path(_seed_env).expanduser().resolve() if _seed_env else None
 GENERAL_CWD = SEED_DIR if SEED_DIR else Path.home()
 DEFAULT_AGENT_COMMAND = "claude"
+# How each known agent CLI takes an opening prompt while still starting an
+# interactive session. "{prompt}" marks where the text goes; an empty
+# template means the agent gets no opening prompt at all, which is also what
+# unknown commands get - guessing wrong could break or misdirect the agent.
+PROMPT_TEMPLATE_DEFAULTS = {
+    "claude": "{prompt}",
+    "opencode": "--prompt {prompt}",
+    # A positional prompt makes cline run a one-shot, auto-approved task
+    # instead of opening its TUI, so it gets no opening prompt.
+    "cline": "",
+}
 MAX_FILE_BYTES = 1_000_000
 HIDDEN_TOP_LEVEL = {".git"}
 
@@ -43,6 +55,21 @@ def load_or_create_token() -> str:
 
 
 SWITCHBOARD_TOKEN = load_or_create_token()
+
+
+def split_command(command: str) -> list[str]:
+    return shlex.split(command, posix=not pty_backend.IS_WINDOWS)
+
+
+def default_prompt_template(command: str) -> str:
+    try:
+        argv = split_command(command)
+    except ValueError:
+        return ""
+    if not argv:
+        return ""
+    # Path(...).stem so "/usr/bin/opencode" and "claude.exe" match too.
+    return PROMPT_TEMPLATE_DEFAULTS.get(Path(argv[0]).stem.lower(), "")
 
 
 def db_connect() -> sqlite3.Connection:
@@ -69,6 +96,13 @@ def init_db() -> None:
     conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('agent_command', ?)",
         (DEFAULT_AGENT_COMMAND,),
+    )
+    # Derive the prompt template from whatever command is already configured,
+    # so upgrading with e.g. "opencode" set doesn't inherit claude's template.
+    command = conn.execute("SELECT value FROM settings WHERE key = 'agent_command'").fetchone()["value"]
+    conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('agent_prompt_template', ?)",
+        (default_prompt_template(command),),
     )
     conn.commit()
     # One-time seed: if the table is empty and SWITCHBOARD_PROJECTS_DIR is set,
@@ -105,6 +139,8 @@ class AddProjectRequest(BaseModel):
 
 class SettingsRequest(BaseModel):
     agent_command: str
+    # None means "use the known default for this command".
+    prompt_template: str | None = None
 
 
 def all_projects_context() -> str:
@@ -123,11 +159,23 @@ def all_projects_context() -> str:
     )
 
 
-def get_agent_command() -> str:
+def get_setting(key: str, default: str) -> str:
     conn = db_connect()
-    row = conn.execute("SELECT value FROM settings WHERE key = 'agent_command'").fetchone()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     conn.close()
-    return row["value"] if row else DEFAULT_AGENT_COMMAND
+    return row["value"] if row else default
+
+
+def get_agent_command() -> str:
+    return get_setting("agent_command", DEFAULT_AGENT_COMMAND)
+
+
+def get_prompt_template() -> str:
+    return get_setting("agent_prompt_template", default_prompt_template(get_agent_command()))
+
+
+def prompt_args(template: str, prompt: str) -> list[str]:
+    return [token.replace("{prompt}", prompt) for token in split_command(template)]
 
 
 def get_project_row(project_id: int) -> sqlite3.Row:
@@ -218,7 +266,11 @@ def readme_text(path: Path) -> str:
 
 @app.get("/api/settings", dependencies=[Depends(require_token)])
 def api_get_settings():
-    return {"agent_command": get_agent_command()}
+    return {
+        "agent_command": get_agent_command(),
+        "prompt_template": get_prompt_template(),
+        "prompt_defaults": PROMPT_TEMPLATE_DEFAULTS,
+    }
 
 
 @app.put("/api/settings", dependencies=[Depends(require_token)])
@@ -226,15 +278,23 @@ def api_set_settings(req: SettingsRequest):
     command = req.agent_command.strip()
     if not command:
         raise HTTPException(status_code=400, detail="Agent command cannot be empty")
+    template = req.prompt_template
+    template = default_prompt_template(command) if template is None else template.strip()
+    try:
+        split_command(command)
+        split_command(template)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse: {e}")
     conn = db_connect()
-    conn.execute(
-        "INSERT INTO settings (key, value) VALUES ('agent_command', ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        (command,),
-    )
+    for key, value in (("agent_command", command), ("agent_prompt_template", template)):
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
     conn.commit()
     conn.close()
-    return {"agent_command": command}
+    return {"agent_command": command, "prompt_template": template}
 
 
 @app.get("/api/projects", dependencies=[Depends(require_token)])
@@ -433,15 +493,25 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
         if kind == "shell":
             argv = [pty_backend.default_shell()]
         else:
-            argv = shlex.split(get_agent_command(), posix=not pty_backend.IS_WINDOWS)
+            argv = split_command(get_agent_command())
             if not project:
                 # General scope: the agent has no built-in notion of
                 # "switchboard's projects" (they can live anywhere on disk), so
-                # tell it up front as its opening message.
+                # tell it up front as its opening message - in whatever form
+                # this agent CLI accepts one (see PROMPT_TEMPLATE_DEFAULTS).
                 context = all_projects_context()
                 if context:
-                    argv = argv + [context]
+                    argv = argv + prompt_args(get_prompt_template(), context)
         if not argv:
+            await websocket.close(code=4400)
+            return
+        if shutil.which(argv[0]) is None:
+            # Otherwise exec fails inside the forked child and the pane just
+            # sits there blank with no hint why.
+            await websocket.send_bytes(
+                f"\x1b[31m'{argv[0]}' was not found on PATH.\x1b[0m\r\n"
+                "Set the agent command at the top of the page, then open a new terminal.\r\n".encode()
+            )
             await websocket.close(code=4400)
             return
 
@@ -469,6 +539,13 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
         while True:
             data = await queue.get()
             if data is None:
+                # The process exited - say so and close the socket, rather
+                # than leaving a dead pane that still looks connected.
+                try:
+                    await websocket.send_bytes(b"\r\n\x1b[2m[process exited]\x1b[0m\r\n")
+                    await websocket.close()
+                except (RuntimeError, WebSocketDisconnect):
+                    pass
                 break
             await websocket.send_bytes(data)
 
@@ -494,7 +571,8 @@ async def ws_terminal(websocket: WebSocket, project: str = "", token: str = "", 
                     # real, rather than just dropping this one viewer.
                     explicit_close = True
                     break
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
+        # RuntimeError: receive() after pump_output already closed the socket.
         pass
     finally:
         with sess.lock:
